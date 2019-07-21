@@ -85,7 +85,7 @@ namespace ShareBook.Api
                     });
             });
 
-            services.AddDbContext<ApplicationDbContext>(options => options.UseMySql(Configuration.GetConnectionString("DefaultConnection")));
+            services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
 
             RollbarConfigurator.Configure(Configuration.GetSection("RollbarEnvironment").Value);
         }
