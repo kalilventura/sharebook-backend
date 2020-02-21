@@ -165,7 +165,12 @@ namespace ShareBook.Repository
 
         public TEntity Insert(TEntity entity) => InsertAsync(entity).Result;
 
-        public TEntity Update(TEntity entity) => UpdateAsync(entity).Result;
+        public TEntity Update(TEntity entity)
+        {
+            var resultFromUpdate = UpdateAsync(entity);
+
+            return resultFromUpdate.Result;
+        }
 
         public void Delete(params object[] keyValues) => DeleteAsync(keyValues).Wait();
 

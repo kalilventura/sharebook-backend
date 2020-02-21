@@ -35,29 +35,31 @@ namespace ShareBook.Api.Controllers
 
         [Authorize("Bearer")]
         [HttpPost]
-        public virtual Result<A> Create([FromBody] R viewModel)
+        public virtual Result<A> Create([FromBody] R viewModel, [FromServices] IMapper _mapper)
         {
             if (!HasRequestViewModel)
-                return Mapper.Map<Result<A>>(_service.Insert(viewModel as T));
+                return _mapper.Map<Result<A>>(_service.Insert(viewModel as T));
 
-            var entity = Mapper.Map<T>(viewModel);
+            var entity = _mapper.Map<T>(viewModel);
             var result = _service.Insert(entity);
-            var resultVM = Mapper.Map<Result<A>>(result);
+            var resultVM = _mapper.Map<Result<A>>(result);
+
             return resultVM;
         }
 
         [Authorize("Bearer")]
         [HttpPut("{id}")]
-        public virtual Result<A> Update(Guid id, [FromBody] R viewModel)
+        public virtual Result<A> Update(Guid id, [FromBody] R viewModel, [FromServices] IMapper _mapper)
         {
             viewModel.Id = id;
 
             if (!HasRequestViewModel)
-                return Mapper.Map<Result<A>>(_service.Update(viewModel as T));
+                return _mapper.Map<Result<A>>(_service.Update(viewModel as T));
 
-            var entity = Mapper.Map<T>(viewModel);
+            var entity = _mapper.Map<T>(viewModel);
             var result = _service.Update(entity);
-            var resultVM = Mapper.Map<A>(result);
+            var resultVM = _mapper.Map<A>(result);
+
             return new Result<A>(resultVM);
         }
     }

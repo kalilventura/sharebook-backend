@@ -1,10 +1,15 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using AutoMapper;
+using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ShareBook.Api.AutoMapper;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using ShareBook.Api.Configuration;
 using ShareBook.Api.Middleware;
 using ShareBook.Api.Services;
@@ -14,9 +19,7 @@ using ShareBook.Service.Muambator;
 using ShareBook.Service.Notification;
 using ShareBook.Service.Server;
 using ShareBook.Service.Upload;
-using Swashbuckle.AspNetCore.Swagger;
-using System.Collections.Generic;
-using System.Linq;
+using System;
 
 namespace ShareBook.Api
 {
@@ -32,70 +35,69 @@ namespace ShareBook.Api
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-
             RegisterHealthChecks(services, Configuration.GetConnectionString("DefaultConnection"));
 
-            services.RegisterRepositoryServices();
-            //auto mapper start 
-            AutoMapperConfig.RegisterMappings();
+            services
+                .RegisterRepositoryServices();
 
-            services.AddMvc()
-                .AddJsonOptions(options =>
-                {
-                    options.SerializerSettings.NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore;
-                })
-                .SetCompatibilityVersion(CompatibilityVersion.Version_2_2);
+            // Auto Mapper Configurations
+            services
+                .AddAutoMapper(typeof(Startup));
 
-            services.Configure<ImageSettings>(options => Configuration.GetSection("ImageSettings").Bind(options));
+            services
+                .Configure<ImageSettings>(options => Configuration.GetSection("ImageSettings").Bind(options))
+                .Configure<EmailSettings>(options => Configuration.GetSection("EmailSettings").Bind(options))
+                .Configure<ServerSettings>(options => Configuration.GetSection("ServerSettings").Bind(options))
+                .Configure<NotificationSettings>(options => Configuration.GetSection("NotificationSettings").Bind(options));
 
-            services.Configure<EmailSettings>(options => Configuration.GetSection("EmailSettings").Bind(options));
-
-            services.Configure<ServerSettings>(options => Configuration.GetSection("ServerSettings").Bind(options));
-
-            services.Configure<NotificationSettings>(options => Configuration.GetSection("NotificationSettings").Bind(options));
-
+            services
+                .AddHttpContextAccessor();
 
             JWTConfig.RegisterJWT(services, Configuration);
 
-            services.AddSwaggerGen(c =>
-            {
-                c.SwaggerDoc("v1", new Info { Title = "SHAREBOOK API", Version = "v1" });
-                c.ResolveConflictingActions(x => x.First());
-                c.AddSecurityDefinition("Bearer", new ApiKeyScheme
-                {
-                    Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
-                    Name = "Authorization",
-                    In = "header",
-                    Type = "apiKey"
-                });
-                c.AddSecurityRequirement(new Dictionary<string, IEnumerable<string>> {
-                    { "Bearer", Enumerable.Empty<string>() },
-                });
-            });
+            services
+                .ConfigureSwaggerData();
 
-            services.AddCors(options =>
+            services
+                .AddCors(options =>
             {
                 options.AddPolicy("AllowAllHeaders",
                     builder =>
                     {
                         builder.AllowAnyOrigin()
-                               .AllowAnyHeader()
-                               .AllowAnyMethod();
+                            .AllowAnyHeader()
+                            .AllowAnyMethod();
                     });
             });
 
-            services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
+            services
+                .AddDbContext<ApplicationDbContext>(options =>
+                        options.UseMySql(Configuration.GetConnectionString("DefaultConnection"),
+                                mySqlOptions =>
+                                {
+                                    mySqlOptions.ServerVersion(new Version(8, 5), ServerType.MySql);
+                                    mySqlOptions.EnableRetryOnFailure(2);
+                                    mySqlOptions.CharSetBehavior(CharSetBehavior.AppendToAllColumns);
+                                }
+                        )
+                    );
 
-            RollbarConfigurator.Configure(Configuration.GetSection("RollbarEnvironment").Value);
+            //RollbarConfigurator.Configure(Configuration["Rollbar:Environment"], Configuration["Rollbar:AccessToken"]);
+            services
+                .ConfigureRollbar(Configuration["Rollbar:Environment"], Configuration["Rollbar:AccessToken"]);
+
             MuambatorConfigurator.Configure(Configuration.GetSection("Muambator:Token").Value, Configuration.GetSection("Muambator:IsActive").Value);
+
+            services
+                .AddControllers()
+                .AddFluentValidation();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-
-            app.UseHealthChecks("/hc");
-            app.UseCors("AllowAllHeaders");
+            if (env.IsProduction() || env.IsStaging())
+                app.UseRollbarMiddleware();
 
             app.UseDeveloperExceptionPage();
             app.UseExceptionHandlerMiddleware();
@@ -104,20 +106,40 @@ namespace ShareBook.Api
 
             app.UseSwagger();
             app.UseSwaggerUI(c =>
+                {
+                    c.SwaggerEndpoint("/swagger", "SHAREBOOK API V2");
+                });
+
+            app.UseRouting();
+
+            app.UseCors(x =>
             {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "SHAREBOOK API V1");
+                x.AllowAnyOrigin();
+                x.AllowAnyMethod();
+                x.AllowAnyHeader();
             });
 
-            // IMPORTANT: Make sure UseCors() is called BEFORE this
-            app.UseMvc(routes =>
-            {
-                routes.MapRoute(
-                    name: "default",
-                    template: "{controller=Book}/{action=Index}/{id?}");
+            app.UseAuthentication();
+            app.UseAuthorization();
 
-                routes.MapSpaFallbackRoute(
-                    name: "spa-fallback",
-                    defaults: new { controller = "ClientSpa", action = "Index" });
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllerRoute(
+                    name: "default",
+                    pattern: "{controller=Book}/{action=Index}/{id?}");
+
+                endpoints.MapFallbackToController("Index", "ClientSpa");
+
+                endpoints.MapHealthChecks("/health", new HealthCheckOptions()
+                {
+                    AllowCachingResponses = false,
+                    ResultStatusCodes =
+                    {
+                        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+                        [HealthStatus.Degraded] = StatusCodes.Status200OK,
+                        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+                    }
+                });
             });
 
             using (var serviceScope = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>().CreateScope())
@@ -125,18 +147,20 @@ namespace ShareBook.Api
                 var scopeServiceProvider = serviceScope.ServiceProvider;
                 var context = serviceScope.ServiceProvider.GetService<ApplicationDbContext>();
                 context.Database.Migrate();
+
                 if (env.IsDevelopment() || env.IsStaging())
                 {
                     var sharebookSeeder = new ShareBookSeeder(context);
                     sharebookSeeder.Seed();
                 }
-            }     
+            }
         }
 
         private void RegisterHealthChecks(IServiceCollection services, string connectionString)
         {
             services.AddHealthChecks()
-                .AddSqlServer(connectionString);
+                .AddMySql(connectionString);
         }
+
     }
 }

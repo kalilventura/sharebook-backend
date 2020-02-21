@@ -16,10 +16,9 @@ namespace ShareBook.Api.Configuration
 {
     public static class ServiceRepositoryCollectionExtensions
     {
-        public static IServiceCollection RegisterRepositoryServices(
-           this IServiceCollection services)
+        public static IServiceCollection RegisterRepositoryServices(this IServiceCollection services)
         {
-            //services
+            #region [ Services ]
             services.AddScoped<IBooksEmailService, BooksEmailService>();
             services.AddScoped<IBookUsersEmailService, BookUserEmailService>();
             services.AddScoped<IBookService, BookService>();
@@ -30,20 +29,23 @@ namespace ShareBook.Api.Configuration
             services.AddScoped<IContactUsService, ContactUsService>();
             services.AddScoped<IContactUsEmailService, ContactUsEmailService>();
             services.AddScoped<IMuambatorService, MuambatorService>();
+            #endregion
 
-            //repositories
+            #region [ Repositories ]
             services.AddScoped<IBookRepository, BookRepository>();
             services.AddScoped<IBookUserRepository, BookUserRepository>();
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IJobHistoryRepository, JobHistoryRepository>();
+            #endregion
 
-            //validators
-            services.AddScoped<IValidator<User>, UserValidator>();
-            services.AddScoped<IValidator<Book>, BookValidator>();
-            services.AddScoped<IValidator<Category>, CategoryValidator>();
-            services.AddScoped<IValidator<ContactUs>, ContactUsValidator>();
-            services.AddScoped<IValidator<BookUser>, BookUserValidator>();
+            #region [ Validations ]
+            services.AddTransient<IValidator<User>, UserValidator>();
+            services.AddTransient<IValidator<Book>, BookValidator>();
+            services.AddTransient<IValidator<Category>, CategoryValidator>();
+            services.AddTransient<IValidator<ContactUs>, ContactUsValidator>();
+            services.AddTransient<IValidator<BookUser>, BookUserValidator>();
+            #endregion
 
             //Auth
             services.AddScoped<IApplicationSignInManager, ApplicationSignInManager>();
@@ -58,11 +60,12 @@ namespace ShareBook.Api.Configuration
             //UnitOfWork
             services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-            //Jobs
+            #region [ Jobs ]
             services.AddScoped<IJobExecutor, JobExecutor>();
             services.AddScoped<RemoveBookFromShowcase>();
             services.AddScoped<ChooseDateReminder>();
             services.AddScoped<LateDonationNotification>();
+            #endregion
 
             //notification
             services.AddScoped<INotificationService, NotificationService>();

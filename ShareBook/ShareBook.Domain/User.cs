@@ -16,9 +16,10 @@ namespace ShareBook.Domain
         public string PasswordSalt { get; set; }
         public string HashCodePassword { get; set; }
         public DateTime HashCodePasswordExpiryDate { get; set; }
+        public DateTime LastLogin { get; set; } = DateTime.Now;
         public string Linkedin { get; set; }
-        public  string Phone{ get; set; }
-        public Profile Profile { get;  set; } = Profile.User;
+        public string Phone { get; set; }
+        public Profile Profile { get; set; } = Profile.User;
         public bool Active { get; set; } = true;
         public bool AllowSendingEmail { get; set; } = true;
         public virtual Address Address { get; set; }
@@ -42,12 +43,12 @@ namespace ShareBook.Domain
 
         public void GenerateHashCodePassword()
         {
-            this.HashCodePassword =  Guid.NewGuid().ToString();
-            this.HashCodePasswordExpiryDate = DateTime.Now.AddDays(1); 
+            this.HashCodePassword = Guid.NewGuid().ToString();
+            this.HashCodePasswordExpiryDate = DateTime.Now.AddDays(1);
         }
 
         public bool HashCodePasswordIsValid(string hashCodePassword)
-             => hashCodePassword == this.HashCodePassword 
+             => hashCodePassword == this.HashCodePassword
                 && (this.HashCodePasswordExpiryDate.Date == DateTime.Now.AddDays(1).Date
                    || this.HashCodePasswordExpiryDate.Date == DateTime.Now.Date);
 
@@ -70,9 +71,15 @@ namespace ShareBook.Domain
             this.Password = password;
         }
 
+        public bool IsBruteForceLogin()
+        {
+            var refDate = DateTime.Now.AddSeconds(-30);
+            return LastLogin > refDate;
+        }
+
         public string Location() => Address.City + "-" + Address.State;
 
-        public int TotalBooksWon() => BookUsers.Where(b => b.Status == DonationStatus.Donated).ToList().Count ;
+        public int TotalBooksWon() => BookUsers.Where(b => b.Status == DonationStatus.Donated).ToList().Count;
 
         public int TotalBooksDonated() => BooksDonated.Count;
     }

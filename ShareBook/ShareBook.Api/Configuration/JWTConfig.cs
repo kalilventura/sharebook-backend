@@ -10,13 +10,11 @@ namespace ShareBook.Api.Configuration
 {
     public static class JWTConfig
     {
-
         public static void RegisterJWT(IServiceCollection services, IConfiguration configuration)
         {
             var tokenConfigurations = ConfigureToken(services, configuration);
             var signingConfigurations = ConfigureSigning(services);
             ConfigureAuth(services, signingConfigurations, tokenConfigurations);
-
         }
 
         private static TokenConfigurations ConfigureToken(IServiceCollection services, IConfiguration configuration)
@@ -48,7 +46,6 @@ namespace ShareBook.Api.Configuration
             {
                 var paramsValidation = bearerOptions.TokenValidationParameters;
                 paramsValidation.IssuerSigningKey = signingConfigurations.Key;
-
 
                 // Valida a assinatura de um token recebido
                 paramsValidation.ValidateIssuerSigningKey = true;

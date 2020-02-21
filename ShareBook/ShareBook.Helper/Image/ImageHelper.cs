@@ -1,5 +1,4 @@
-﻿using ShareBook.Helper.Extensions;
-using System.IO;
+﻿using System.IO;
 
 namespace ShareBook.Helper.Image
 {

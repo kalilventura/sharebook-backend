@@ -80,7 +80,7 @@ namespace ShareBook.Service.Notification
             {
                 _notificationCreateOptions.Filters = new List<INotificationFilter>
                 {
-                        new NotificationFilterField { Field = NotificationFilterFieldTypeEnum.Tag, Key = "email", Value = email}
+                   new NotificationFilterField { Field = NotificationFilterFieldTypeEnum.Tag, Key = "email", Value = email}
                 };
 
                 _notificationCreateOptions.Headings.Add(LanguageCodes.English, title);

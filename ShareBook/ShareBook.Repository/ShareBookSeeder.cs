@@ -5,26 +5,21 @@ using System.Linq;
 
 namespace ShareBook.Repository
 {
-    public  class ShareBookSeeder
+    public class ShareBookSeeder
     {
-
         private readonly ApplicationDbContext _context;
 
         // Teste123@
         private const string PASSWORD_HASH = "cWrRhnwyLmSOv3FIn7abuRevvV/GkGc1E/c66s02ujQ=";
         private const string PASSWORD_SALT = "xP+CoqfrCbbfIU9HPCd4rA==";
 
-
-        public ShareBookSeeder(ApplicationDbContext context)
-        {
-            _context = context;
-        }
+        public ShareBookSeeder(ApplicationDbContext context) => _context = context;
 
         public void Seed()
         {
             _context.Database.EnsureCreated();
 
-            if ( !(_context.Users.Any() 
+            if (!(_context.Users.Any()
                 && _context.Books.Any()
                 && _context.Categories.Any()))
             {
@@ -488,7 +483,7 @@ namespace ShareBook.Repository
                 _context.Users.AddRange(grantee, @operator);
                 _context.Books.AddRange(book1, book2, book3, book4, book5, book6, book7,
                     book8, book9, book10, book11, book12, book13, book14, book15, book16,
-                    book16, book18, book19, book20 , book21 , book22 , book23);
+                    book16, book18, book19, book20, book21, book22, book23);
 
                 _context.BookUser.Add(request);
 
@@ -496,6 +491,6 @@ namespace ShareBook.Repository
             }
 
         }
-        
+
     }
 }

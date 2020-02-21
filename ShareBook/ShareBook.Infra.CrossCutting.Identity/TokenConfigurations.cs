@@ -1,7 +1,4 @@
-﻿
-
-namespace ShareBook.Infra.CrossCutting.Identity
-
+﻿namespace ShareBook.Infra.CrossCutting.Identity
 {
     public class TokenConfigurations
     {

@@ -1,4 +1,8 @@
-﻿using AutoMapper;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
@@ -9,27 +13,28 @@ using ShareBook.Domain.Common;
 using ShareBook.Infra.CrossCutting.Identity;
 using ShareBook.Infra.CrossCutting.Identity.Interfaces;
 using ShareBook.Service;
-using System;
-using System.Collections.Generic;
-using System.Threading;
 
 namespace ShareBook.Api.Controllers
 {
     [Route("api/[controller]")]
     [EnableCors("AllowAllHeaders")]
     [GetClaimsFilter]
-    public class AccountController : Controller
+    public class AccountController : ControllerBase
     {
         private readonly IUserService _userService;
         private readonly IApplicationSignInManager _signManager;
+        private readonly IMapper _mapper;
 
-        public AccountController(IUserService userService, IApplicationSignInManager signManager)
+        public AccountController(IUserService userService,
+                                 IMapper mapper,
+                                 IApplicationSignInManager signManager)
         {
             _userService = userService;
             _signManager = signManager;
+            _mapper = mapper;
         }
 
-        #region GET
+        #region [ GET ]
         [Authorize("Bearer")]
         [HttpGet]
         public UserVM Get()
@@ -37,10 +42,9 @@ namespace ShareBook.Api.Controllers
             var id = new Guid(Thread.CurrentPrincipal?.Identity?.Name);
             var user = _userService.Find(id);
 
-            var userVM = Mapper.Map<User, UserVM>(user);
+            var userVM = _mapper.Map<User, UserVM>(user);
             return userVM;
         }
-
 
         [Authorize("Bearer")]
         [HttpGet("Profile")]
@@ -50,30 +54,29 @@ namespace ShareBook.Api.Controllers
             return new { profile = _userService.Find(id).Profile.ToString() };
         }
 
-
         [Authorize("Bearer")]
         [HttpGet("ListFacilitators/{userIdDonator}")]
         public IActionResult ListFacilitators(Guid userIdDonator)
         {
             var facilitators = _userService.GetFacilitators(userIdDonator);
-            var facilitatorsClean = Mapper.Map<List<UserFacilitatorVM>>(facilitators);
+            var facilitatorsClean = _mapper.Map<List<UserFacilitatorVM>>(facilitators);
             return Ok(facilitatorsClean);
         }
         #endregion
 
-
-        #region POST
+        #region [ POST ]
         [HttpPost("Register")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(409)]
-        public IActionResult Post([FromBody]RegisterUserVM registerUserVM,
-            [FromServices]SigningConfigurations signingConfigurations,
-            [FromServices]TokenConfigurations tokenConfigurations)
+        public IActionResult Post([FromBody] RegisterUserVM registerUser, [FromServices] SigningConfigurations signingConfigurations, [FromServices] TokenConfigurations tokenConfigurations)
         {
             if (!ModelState.IsValid)
-                return BadRequest();
+                return BadRequest(ModelState
+                                        .Values
+                                        .SelectMany(x => x.Errors.Select(error => error.ErrorMessage))
+                                        .ToList());
 
-            var user = Mapper.Map<RegisterUserVM, User>(registerUserVM);
+            var user = _mapper.Map<RegisterUserVM, User>(registerUser);
 
             var result = _userService.Insert(user);
 
@@ -86,36 +89,41 @@ namespace ShareBook.Api.Controllers
         [HttpPost("Login")]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(404)]
-        public IActionResult Login([FromBody]LoginUserVM loginUserVM,
-            [FromServices]SigningConfigurations signingConfigurations,
-            [FromServices]TokenConfigurations tokenConfigurations)
+        public IActionResult Login([FromBody] LoginUserVM loginUserVM, [FromServices] SigningConfigurations signingConfigurations, [FromServices] TokenConfigurations tokenConfigurations)
         {
             if (!ModelState.IsValid)
-                return BadRequest();
+                return BadRequest(ModelState
+                                        .Values
+                                        .SelectMany(x => x.Errors.Select(error => error.ErrorMessage))
+                                        .ToList());
 
-            var user = Mapper.Map<LoginUserVM, User>(loginUserVM);
+            var user = _mapper.Map<LoginUserVM, User>(loginUserVM);
 
             var result = _userService.AuthenticationByEmailAndPassword(user);
 
-            if (result.Success)
+            if (!result.Success)
+                return NotFound(result);
+
+            var response = new Result
             {
-                var response = new Result
-                {
-                    Value = _signManager.GenerateTokenAndSetIdentity(result.Value, signingConfigurations, tokenConfigurations)
-                };
+                Value = _signManager.GenerateTokenAndSetIdentity(result.Value, signingConfigurations, tokenConfigurations)
+            };
 
-                return Ok(response);
-            }
+            return Ok(response);
 
-            return NotFound(result);
         }
-
 
         [HttpPost("ForgotMyPassword")]
         [ProducesResponseType(typeof(Result), 200)]
         [ProducesResponseType(404)]
-        public IActionResult ForgotMyPassword([FromBody]ForgotMyPasswordVM forgotMyPasswordVM)
+        public IActionResult ForgotMyPassword([FromBody] ForgotMyPasswordVM forgotMyPasswordVM)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState
+                                        .Values
+                                        .SelectMany(x => x.Errors.Select(error => error.ErrorMessage))
+                                        .ToList());
+
             var result = _userService.GenerateHashCodePasswordAndSendEmailToUser(forgotMyPasswordVM.Email);
 
             if (result.Success)
@@ -126,19 +134,20 @@ namespace ShareBook.Api.Controllers
 
         #endregion
 
-        #region PUT
+        #region [ PUT ]
         [Authorize("Bearer")]
         [HttpPut]
         [ProducesResponseType(typeof(Result<User>), 200)]
         [ProducesResponseType(409)]
-        public IActionResult Update([FromBody]UpdateUserVM updateUserVM,
-           [FromServices]SigningConfigurations signingConfigurations,
-           [FromServices]TokenConfigurations tokenConfigurations)
+        public IActionResult Update([FromBody] UpdateUserVM updateUserVM, [FromServices] SigningConfigurations signingConfigurations, [FromServices] TokenConfigurations tokenConfigurations)
         {
             if (!ModelState.IsValid)
-                return BadRequest();
+                return BadRequest(ModelState
+                                        .Values
+                                        .SelectMany(x => x.Errors.Select(error => error.ErrorMessage))
+                                        .ToList());
 
-            var user = Mapper.Map<UpdateUserVM, User>(updateUserVM);
+            var user = _mapper.Map<UpdateUserVM, User>(updateUserVM);
 
             user.Id = new Guid(Thread.CurrentPrincipal?.Identity?.Name);
 
@@ -150,20 +159,20 @@ namespace ShareBook.Api.Controllers
             return Ok(_signManager.GenerateTokenAndSetIdentity(result.Value, signingConfigurations, tokenConfigurations));
         }
 
-
         [Authorize("Bearer")]
         [HttpPut("ChangePassword")]
-        public Result<User> ChangePassword([FromBody]ChangePasswordUserVM changePasswordUserVM)
+        public Result<User> ChangePassword([FromBody] ChangePasswordUserVM changePasswordUserVM)
         {
             var user = new User() { Password = changePasswordUserVM.OldPassword };
             user.Id = new Guid(Thread.CurrentPrincipal?.Identity?.Name);
+
             return _userService.ValidOldPasswordAndChangeUserPassword(user, changePasswordUserVM.NewPassword);
         }
 
         [HttpPut("ChangeUserPasswordByHashCode")]
         [ProducesResponseType(typeof(Result<User>), 200)]
         [ProducesResponseType(404)]
-        public IActionResult ChangeUserPasswordByHashCode([FromBody]ChangeUserPasswordByHashCodeVM changeUserPasswordByHashCodeVM)
+        public IActionResult ChangeUserPasswordByHashCode([FromBody] ChangeUserPasswordByHashCodeVM changeUserPasswordByHashCodeVM)
         {
             var result = _userService.ConfirmHashCodePassword(changeUserPasswordByHashCodeVM.HashCodePassword);
             if (!result.Success)
@@ -177,6 +186,12 @@ namespace ShareBook.Api.Controllers
         }
         #endregion
 
-
+        [HttpGet]
+        [Route("ForceException")]
+        public IActionResult ForceException()
+        {
+            var teste = 1 / Convert.ToInt32("Teste");
+            return BadRequest();
+        }
     }
 }

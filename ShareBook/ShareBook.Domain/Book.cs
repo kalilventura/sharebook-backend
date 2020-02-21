@@ -68,7 +68,7 @@ namespace ShareBook.Domain
             if (Donated())
                 return BookStatus.Donated;
 
-            if(Canceled)
+            if (Canceled)
                 return BookStatus.Canceled;
 
             if (Approved)

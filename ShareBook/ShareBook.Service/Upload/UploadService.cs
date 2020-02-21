@@ -4,7 +4,6 @@ using ShareBook.Service.Server;
 using System;
 using System.IO;
 
-
 namespace ShareBook.Service.Upload
 {
     public class UploadService : IUploadService

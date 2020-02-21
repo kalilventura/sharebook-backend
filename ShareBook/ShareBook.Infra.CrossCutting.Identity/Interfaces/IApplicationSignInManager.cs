@@ -1,5 +1,4 @@
 ﻿using ShareBook.Domain;
-using ShareBook.Infra.CrossCutting.Identity;
 
 namespace ShareBook.Infra.CrossCutting.Identity.Interfaces
 {

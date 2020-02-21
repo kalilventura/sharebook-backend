@@ -24,7 +24,7 @@ namespace ShareBook.Api.Controllers
 
     [GetClaimsFilter]
     [EnableCors("AllowAllHeaders")]
-    public class BaseController<T, R, A> : Controller
+    public class BaseController<T, R, A> : ControllerBase
         where T : BaseEntity
         where R : IIdProperty
         where A : class
@@ -37,6 +37,7 @@ namespace ShareBook.Api.Controllers
         {
             _service = service;
         }
+
         protected void SetDefault(Expression<Func<T, object>> defaultOrder)
         {
             _defaultOrder = defaultOrder;

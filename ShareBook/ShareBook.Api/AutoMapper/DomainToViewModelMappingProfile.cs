@@ -25,7 +25,7 @@ namespace ShareBook.Api.AutoMapper
                  .ForMember(dest => dest.ChooseDate, opt => opt.MapFrom(src => src.ChooseDate))
                  .ForMember(dest => dest.Winner, opt => opt.MapFrom(src => src.Winner()))
                  .ForMember(dest => dest.TrackingNumber, opt => opt.MapFrom(src => src.TrackingNumber));
-
+            
             CreateMap<BookUser, MyBookRequestVM>()
                 .ForMember(dest => dest.Author, opt => opt.MapFrom(src => src.Book.Author))
                 .ForMember(dest => dest.Title, opt => opt.MapFrom(src => src.Book.Title))
@@ -36,10 +36,17 @@ namespace ShareBook.Api.AutoMapper
             #region [ User ]
             CreateMap<User, UserVM>()
                 .ForMember(dest => dest.Address, opt => opt.MapFrom(src => src.Address));
+
+            CreateMap<User, UserFacilitatorVM>()
+                .ForMember(dest => dest.Id, opt       =>    opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Name, opt     =>    opt.MapFrom(src => src.Name))
+                .ForMember(dest => dest.Email, opt    =>    opt.MapFrom(src => src.Email))
+                .ForMember(dest => dest.Linkedin, opt =>    opt.MapFrom(src => src.Linkedin))
+                .ForMember(dest => dest.Phone, opt    =>    opt.MapFrom(src => src.Phone))
+                .ForMember(dest => dest.Address, opt  =>    opt.MapFrom(src => src.Address));
             #endregion
 
             #region [ BookUser ]
-
             CreateMap<BookUser, RequestersListVM>()
                 .ForMember(dest => dest.UserId, opt            => opt.MapFrom(src => src.UserId))
                 .ForMember(dest => dest.RequesterNickName, opt => opt.MapFrom(src => src.NickName))
@@ -48,7 +55,6 @@ namespace ShareBook.Api.AutoMapper
                 .ForMember(dest => dest.TotalBooksDonated, opt => opt.MapFrom(src => src.User.TotalBooksDonated()))
                 .ForMember(dest => dest.RequestText, opt       => opt.MapFrom(src => src.Reason))
                 .ForMember(dest => dest.Status, opt            => opt.MapFrom(src => src.Status));
-
             #endregion
         }
     }

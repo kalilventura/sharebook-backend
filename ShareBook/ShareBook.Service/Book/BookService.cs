@@ -106,22 +106,22 @@ namespace ShareBook.Service
             entity.UserId = new Guid(Thread.CurrentPrincipal?.Identity?.Name);
 
             var result = Validate(entity);
-            if (result.Success)
-            {
-                entity.Slug = SetSlugByTitleOrIncremental(entity);
+            if (!result.Success)
+                return result;
 
-                entity.ImageSlug = ImageHelper.FormatImageName(entity.ImageName, entity.Slug);
+            entity.Slug = SetSlugByTitleOrIncremental(entity);
 
-                result.Value = _repository.Insert(entity);
+            entity.ImageSlug = ImageHelper.FormatImageName(entity.ImageName, entity.Slug);
 
-                result.Value.ImageUrl = _uploadService.UploadImage(entity.ImageBytes, entity.ImageSlug, "Books");
+            result.Value = _repository.Insert(entity);
 
-                result.Value.ImageBytes = null;
+            result.Value.ImageUrl = _uploadService.UploadImage(entity.ImageBytes, entity.ImageSlug, "Books");
 
-                _booksEmailService.SendEmailNewBookInserted(entity);
-                                                                      
-            }
-             return result;
+            result.Value.ImageBytes = null;
+
+            _booksEmailService.SendEmailNewBookInserted(entity);
+
+            return result;
         }
 
         public override Result<Book> Update(Book entity)
@@ -167,12 +167,12 @@ namespace ShareBook.Service
             savedBook.ImageSlug = entity.ImageSlug;
             savedBook.Title = entity.Title;
             savedBook.CategoryId = entity.CategoryId;
-            savedBook.Canceled = entity.Canceled;           
+            savedBook.Canceled = entity.Canceled;
 
             savedBook.Synopsis = entity.Synopsis;
             savedBook.TrackingNumber = entity.TrackingNumber;
 
-            if (entity.UserIdFacilitator.HasValue && entity.UserIdFacilitator !=  Guid.Empty)
+            if (entity.UserIdFacilitator.HasValue && entity.UserIdFacilitator != Guid.Empty)
                 savedBook.UserIdFacilitator = entity.UserIdFacilitator;
 
             result.Value = _repository.UpdateAsync(savedBook).Result;
@@ -187,7 +187,7 @@ namespace ShareBook.Service
             return result;
         }
 
-    
+
 
         public PagedList<Book> ByTitle(string title, int page, int itemsPerPage)
             => SearchBooks(x => (x.Approved
@@ -312,7 +312,8 @@ namespace ShareBook.Service
             return books.FirstOrDefault();
         }
 
-        public void RenewChooseDate(Guid bookId) {
+        public void RenewChooseDate(Guid bookId)
+        {
             var book = _repository.Find(bookId);
             if (book == null)
                 throw new ShareBookException(ShareBookException.Error.NotFound);

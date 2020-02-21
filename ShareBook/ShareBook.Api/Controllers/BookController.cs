@@ -21,17 +21,23 @@ namespace ShareBook.Api.Controllers
     [Route("api/[controller]")]
     [GetClaimsFilter]
     [EnableCors("AllowAllHeaders")]
-    public class BookController : Controller
+    public class BookController : ControllerBase
     {
         private readonly IBookUserService _bookUserService;
         private readonly IBookService _service;
         private readonly IUserService _userService;
+        private readonly IMapper _mapper;
         private Expression<Func<Book, object>> _defaultOrder = x => x.Id;
-        public BookController(IBookService bookService, IBookUserService bookUserService, IUserService userService)
+
+        public BookController(IBookService bookService,
+                              IBookUserService bookUserService,
+                              IMapper mapper,
+                              IUserService userService)
         {
             _service = bookService;
             _bookUserService = bookUserService;
             _userService = userService;
+            _mapper = mapper;
         }
 
         protected void SetDefault(Expression<Func<Book, object>> defaultOrder)
@@ -66,7 +72,8 @@ namespace ShareBook.Api.Controllers
             // TODO: parar de usar esse get complicado e fazer uma query linq/ef tradicional
             // usando ThenInclude(). fonte: https://stackoverflow.com/questions/10822656/entity-framework-include-multiple-levels-of-properties
             var books = _service.Get(x => x.Title, page, items, new IncludeList<Book>(x => x.User, x => x.BookUsers, x => x.UserFacilitator));
-            var responseVM = Mapper.Map<List<BooksVM>>(books.Items);
+
+            var responseVM = _mapper.Map<List<BooksVM>>(books.Items);
             return new PagedList<BooksVM>()
             {
                 Page = page,
@@ -109,7 +116,7 @@ namespace ShareBook.Api.Controllers
             if (!_IsBookOwner(bookId)) return Unauthorized();
 
             var requesters = _bookUserService.GetRequestersList(bookId);
-            var requestersVM = Mapper.Map<List<RequestersListVM>>(requesters);
+            var requestersVM = _mapper.Map<List<RequestersListVM>>(requesters);
 
             return Ok(requestersVM);
         }
@@ -163,7 +170,7 @@ namespace ShareBook.Api.Controllers
         [HttpPost]
         public IActionResult Create([FromBody] CreateBookVM createBookVM)
         {
-            var book = Mapper.Map<Book>(createBookVM);
+            var book = _mapper.Map<Book>(createBookVM);
             _service.Insert(book);
             return Ok(new Result { SuccessMessage = "Livro cadastrado com sucesso! Aguarde aprovação." });
         }
@@ -174,7 +181,7 @@ namespace ShareBook.Api.Controllers
         public IActionResult Update(Guid id, [FromBody] UpdateBookVM updateBookVM)
         {
             updateBookVM.Id = id;
-            var book = Mapper.Map<Book>(updateBookVM);
+            var book = _mapper.Map<Book>(updateBookVM);
 
             _service.Update(book);
             return Ok(new Result { SuccessMessage = "Livro alterado com sucesso!" });
@@ -185,7 +192,8 @@ namespace ShareBook.Api.Controllers
         [ProducesResponseType(typeof(Result), 200)]
         public IActionResult DonateBook(Guid bookId, [FromBody] DonateBookUserVM donateBookUserVM)
         {
-            if (!_IsBookOwner(bookId)) return Unauthorized();
+            if (!_IsBookOwner(bookId))
+                return Unauthorized();
 
             _bookUserService.DonateBook(bookId, donateBookUserVM.UserId, donateBookUserVM.Note);
 
@@ -219,7 +227,7 @@ namespace ShareBook.Api.Controllers
         public PagedList<MyBookRequestVM> MyRequests(int page, int items)
         {
             var donation = _bookUserService.GetRequestsByUser(page, items);
-            var myBooksRequestsVM = Mapper.Map<List<MyBookRequestVM>>(donation.Items);
+            var myBooksRequestsVM = _mapper.Map<List<MyBookRequestVM>>(donation.Items);
 
             return new PagedList<MyBookRequestVM>()
             {
@@ -236,7 +244,7 @@ namespace ShareBook.Api.Controllers
         {
             Guid userId = new Guid(Thread.CurrentPrincipal?.Identity?.Name);
             var donations = _service.GetUserDonations(userId);
-            return Mapper.Map<List<BooksVM>>(donations);
+            return _mapper.Map<List<BooksVM>>(donations);
         }
 
         [Authorize("Bearer")]
@@ -269,9 +277,9 @@ namespace ShareBook.Api.Controllers
 
             var book = _service.GetBookWithAllUsers(bookId);
 
-            var donor = Mapper.Map<UserVM>(book.User);
-            var facilitator = Mapper.Map<UserVM>(book.UserFacilitator);
-            var winner = Mapper.Map<UserVM>(book.WinnerUser());
+            var donor = _mapper.Map<UserVM>(book.User);
+            var facilitator = _mapper.Map<UserVM>(book.UserFacilitator);
+            var winner = _mapper.Map<UserVM>(book.WinnerUser());
 
             var result = new MainUsersVM
             {
@@ -297,8 +305,12 @@ namespace ShareBook.Api.Controllers
         {
             var userId = new Guid(Thread.CurrentPrincipal?.Identity?.Name);
             var user = _userService.Find(userId);
-            if (user == null) return false;
-            if (user.Profile == Domain.Enums.Profile.Administrator) return true;
+            
+            if (user == null) 
+                return false;
+
+            if (user.Profile == Domain.Enums.Profile.Administrator)
+                return true;
 
             var book = _service.Find(bookId);
             return book.UserId == userId;

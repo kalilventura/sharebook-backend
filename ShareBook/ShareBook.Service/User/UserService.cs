@@ -1,11 +1,10 @@
 ﻿using FluentValidation;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using ShareBook.Domain;
 using ShareBook.Domain.Common;
-using ShareBook.Domain.Enums;
+using ShareBook.Domain.Exceptions;
 using ShareBook.Helper.Crypto;
 using ShareBook.Repository;
-
 using ShareBook.Repository.Repository;
 using ShareBook.Repository.UoW;
 using ShareBook.Service.Generic;
@@ -20,48 +19,69 @@ namespace ShareBook.Service
     {
         private readonly IUserRepository _userRepository;
         private readonly IUserEmailService _userEmailService;
+        private readonly IConfiguration _configuration;
         private const string PASSWORD_IS_WEAK = "A senha não atende os requisitos. Mínimo oito caracteres, um caractere especial, um caractere numérico e uma letra em maiúsculo.";
         #region Public
         public UserService(IUserRepository userRepository,
-            IUnitOfWork unitOfWork,
-            IValidator<User> validator,
-            IUserEmailService userEmailService) : base(userRepository, unitOfWork, validator)
+                           IUnitOfWork unitOfWork,
+                           IValidator<User> validator,
+                           IUserEmailService userEmailService,
+                           IConfiguration configuration) : base(userRepository, unitOfWork, validator)
         {
             _userRepository = userRepository;
             _userEmailService = userEmailService;
+            _configuration = configuration;
         }
 
         public Result<User> AuthenticationByEmailAndPassword(User user)
         {
+            var validateUser = Validate(user, x => x.Email, x => x.Password);
 
-            var result = Validate(user, x => x.Email, x => x.Password);
+            if (!validateUser.Success)
+                return validateUser;
 
             string decryptedPass = user.Password;
 
             user = _repository.Find(e => e.Email.Equals(user.Email, StringComparison.InvariantCultureIgnoreCase));
 
+            if (user == null)
+            {
+                validateUser.Messages.Add("Usuário não encontrado");
+                return validateUser;
+            }
+
+            if (user.IsBruteForceLogin())
+            {
+                validateUser.Messages.Add("Login bloquedo por 30 segundos, para proteger sua conta.");
+                return validateUser;
+            }
+
+            // persiste última tentativa de login ANTES do SUCESSO ou FALHA pra
+            // ter métrica de verificação de brute force.
+            user.LastLogin = DateTime.Now;
+            _userRepository.Update(user);
+
             if (user == null || !IsValidPassword(user, decryptedPass))
             {
-                result.Messages.Add("Email ou senha incorretos");
-                return result;
+                validateUser.Messages.Add("Email ou senha incorretos");
+                return validateUser;
             }
 
             if (!user.Active)
             {
-                result.Messages.Add("Usuário com acesso temporariamente suspenso.");
-                return result;
+                validateUser.Messages.Add("Usuário com acesso temporariamente suspenso.");
+                return validateUser;
             }
 
-            result.Value = UserCleanup(user);
-            return result;
+            validateUser.Value = UserCleanup(user);
+            return validateUser;
         }
 
         public override Result<User> Insert(User user)
         {
             var result = Validate(user);
 
-            if (!user.PasswordIsStrong())
-                result.Messages.Add(PASSWORD_IS_WEAK);
+            // Senha forte não é mais obrigatória.
 
             if (_repository.Any(x => x.Email == user.Email))
                 result.Messages.Add("Usuário já possui email cadastrado.");
@@ -123,20 +143,17 @@ namespace ShareBook.Service
 
         public Result<User> ChangeUserPassword(User user, string newPassword)
         {
+            var result = Validate(user);
+
+            // Senha forte não é mais obrigatória. Apenas validação de tamanho.
+            if (newPassword.Length < 6 || newPassword.Length > 32)
+                throw new ShareBookException("A senha deve ter entre 6 e 32 letras.");
+
             user.ChangePassword(newPassword);
-
-            var result = Validate(user);         
-
-            if (!user.PasswordIsStrong())
-            {
-                result.Messages.Add(PASSWORD_IS_WEAK);
-                result.Value = null;
-                return result;
-            }
-
             user = GetUserEncryptedPass(user);
             user = _userRepository.UpdatePassword(user).Result;
             result.Value = UserCleanup(user);
+
 
             return result;
         }
@@ -152,10 +169,11 @@ namespace ShareBook.Service
                 return result;
             }
 
-            
             user.GenerateHashCodePassword();
+
             _repository.Update(user);
             _userEmailService.SendEmailForgotMyPasswordToUserAsync(user);
+
             result.SuccessMessage = "E-mail enviado com as instruções para recuperação da senha.";
             return result;
         }
@@ -172,7 +190,7 @@ namespace ShareBook.Service
             else if (result.Success && !userConfirmedHashCodePassword.HashCodePasswordIsValid(hashCodePassword))
                 result.Messages.Add("Chave errada ou expirada. Por favor gere outra chave");
 
-            else 
+            else
                 result.Value = UserCleanup(userConfirmedHashCodePassword);
 
             return result;
@@ -180,28 +198,47 @@ namespace ShareBook.Service
 
         public IList<User> GetFacilitators(Guid userIdDonator)
         {
-            var sql = @"select 
-                            CONCAT(Name, ' (', total, ')') as Name,
-                            Id
-                        from 
+            var sql = @"SELECT 
+                              CONCAT(Name, ' (', total, ')') AS Name, Id
+                        FROM
                         (
-                            select top 100
+                            SELECT
                                 u.Name, u.Id,
-                                ( select count(*) as total from Books b 
-                                  where b.UserIdFacilitator = u.Id and b.UserId = {0} 
-                                ) as total
+                                (SELECT COUNT(*) AS total FROM Books b 
+                                  WHERE b.UserIdFacilitator = u.Id AND b.UserId = @UserId) AS total
                             FROM
                                 Users u
-                            where u.Profile = 0 -- Administrador
-                            order by total desc, u.Name
+                            WHERE u.Profile = 0 -- Administrador
+                            ORDER BY total desc, u.Name
                         ) sub";
 
-            return _repository.Get().FromSql(sql, userIdDonator.ToString())
-            .Select(x => new User { 
-                Id = x.Id,
-                Name = x.Name
-                })
-            .ToList();
+            IList<User> users = new List<User>();
+
+            using (var connection = new MySql.Data.MySqlClient.MySqlConnection(_configuration.GetConnectionString("DefaultConnection")))
+            {
+                connection.Open();
+                using (var command = new MySql.Data.MySqlClient.MySqlCommand(sql, connection))
+                {
+                    command.Parameters.AddWithValue("@UserId", userIdDonator.ToString());
+                    using (var reader = command.ExecuteReader())
+                    {
+                        if (reader.HasRows)
+                        {
+                            while (reader.Read())
+                            {
+                                users.Add(new User
+                                {
+                                    Id = Guid.Parse(reader["Id"].ToString()),
+                                    Name = reader["Name"].ToString()
+                                });
+                            }
+                        }
+                    }
+                }
+                connection.Close();
+            }
+
+            return users;
 
         }
         #endregion
